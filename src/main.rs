@@ -102,7 +102,7 @@ fn auth_refresh(params: &Value) -> Result<Value, RpcError> {
 }
 
 fn auth_revoke(_params: &Value) -> Result<Value, RpcError> {
-    // Only drop our cache; the user's opencode auth.json is untouched.
+    // Drop only this plugin's cache; OpenCode's own files are never touched.
     if let Ok(home) = std::env::var("HOME") {
         let _ = std::fs::remove_file(format!("{home}/.opencode-sub.json"));
     }

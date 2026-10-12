@@ -16,15 +16,15 @@ Both are API-key providers. The model list is fetched from each endpoint's `/mod
 
 ## Authentication
 
-Key resolution order:
+The only key sources are the ones you set up for this plugin:
 
 1. `OPENCODE_API_KEY` environment variable.
-2. OpenCode's own auth store — `OPENCODE_AUTH_CONTENT`, or `OPENCODE_AUTH_JSON`, or
-   `~/.local/share/opencode/auth.json` — entries for `opencode` or `opencode-go`.
-3. The sidecar's cache.
+2. The sidecar's own cache, written from the key the host collects when you enter it in the
+   provider login.
 
-Easiest path: `opencode auth login`, select OpenCode Zen or Go, and paste the key from
-https://opencode.ai/auth.
+Get your key from https://opencode.ai/auth (create one under OpenCode Zen). Zen and Go take
+the same key. The plugin does not read OpenCode's own credential store (`auth.json`, or the
+`OPENCODE_AUTH_*` variables), nor any other app's login.
 
 ## Setup
 
