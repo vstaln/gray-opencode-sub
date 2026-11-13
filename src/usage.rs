@@ -4,7 +4,7 @@
 //! live on the opencode.ai dashboard, not in a fetchable API. The card
 //! reports which flavor is connected with no fabricated windows.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::setup::{self, ZenKind};
 
@@ -14,8 +14,8 @@ pub fn handle(params: &Value) -> Result<Value, String> {
         .get("auth_method")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let kind = crate::kind_for_method(method)
-        .ok_or_else(|| format!("unknown auth method {method}"))?;
+    let kind =
+        crate::kind_for_method(method).ok_or_else(|| format!("unknown auth method {method}"))?;
     if setup::api_key(kind).is_none() {
         return Err("no OpenCode key".to_string());
     }

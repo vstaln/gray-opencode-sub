@@ -49,6 +49,7 @@ fn manifest() -> Value {
             provider(PROVIDER_GO, "OpenCode Go", AUTH_GO, "Go API key"),
         ],
         "commands": ["/opencode"],
+        "command_descriptions": {"/opencode": "switch to OpenCode Zen and Go models"},
     })
 }
 
@@ -90,7 +91,10 @@ fn kind_for_method(method: &str) -> Option<ZenKind> {
 }
 
 fn auth_refresh(params: &Value) -> Result<Value, RpcError> {
-    let method = params.get("auth_method").and_then(Value::as_str).unwrap_or_default();
+    let method = params
+        .get("auth_method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let Some(kind) = kind_for_method(method) else {
         return Err(RpcError::Protocol("unknown auth method".into()));
     };
@@ -110,7 +114,10 @@ fn auth_revoke(_params: &Value) -> Result<Value, RpcError> {
 }
 
 fn provider_models(params: &Value) -> Result<Value, RpcError> {
-    let provider = params.get("provider").and_then(Value::as_str).unwrap_or_default();
+    let provider = params
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let Some(kind) = kind_for(provider) else {
         return Err(RpcError::Protocol("unknown provider".into()));
     };
@@ -133,30 +140,42 @@ fn provider_models(params: &Value) -> Result<Value, RpcError> {
 }
 
 fn provider_chat(intents: &Intents, params: &Value) -> Result<Value, RpcError> {
-    let provider = params.get("provider").and_then(Value::as_str).unwrap_or_default();
+    let provider = params
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let Some(kind) = kind_for(provider) else {
         return Err(RpcError::Protocol("unknown provider".into()));
     };
     let key = setup::api_key(kind).ok_or_else(|| unavailable(setup::LOGIN_HINT))?;
-    let model = params.get("model").and_then(Value::as_str).unwrap_or_default();
+    let model = params
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let key2 = key.clone();
-    let turn: TurnFn = Arc::new(move |raw: &[u8], cancel: &AtomicBool| {
-        zen::forward(kind, &key2, raw, cancel)
-    });
+    let turn: TurnFn =
+        Arc::new(move |raw: &[u8], cancel: &AtomicBool| zen::forward(kind, &key2, raw, cancel));
     let (relay_url, relay_token) =
         relay::mint_turn(intents, model, turn, TOKEN_PREFIX).map_err(unavailable)?;
     Ok(json!({"relay_url": relay_url, "relay_token": relay_token}))
 }
 
 fn command_run(params: &Value) -> Result<Value, RpcError> {
-    let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if name != "/opencode" {
         return Err(RpcError::Protocol(format!("unknown command {name}")));
     }
     let argv: Vec<String> = params
         .get("argv")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     match argv.first().map(String::as_str).unwrap_or("") {
         "" => Ok(json!({})),

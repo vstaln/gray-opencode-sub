@@ -17,7 +17,12 @@ fn agent() -> ureq::Agent {
 }
 
 /// The relay TurnFn for one zen flavor.
-pub fn forward(kind: ZenKind, key: &str, raw: &[u8], _cancel: &AtomicBool) -> Result<Vec<u8>, String> {
+pub fn forward(
+    kind: ZenKind,
+    key: &str,
+    raw: &[u8],
+    _cancel: &AtomicBool,
+) -> Result<Vec<u8>, String> {
     // Model id may carry bracket overrides or provider prefixes zen
     // doesn't know; pass the body through untouched otherwise.
     let url = format!("{}/responses", kind.base_url());
@@ -65,11 +70,16 @@ pub fn list_models(kind: ZenKind, key: &str) -> Result<Vec<serde_json::Value>, S
         .set("Accept", "application/json")
         .call();
     let body = match resp {
-        Ok(r) => r.into_string().map_err(|e| format!("zen models read: {e}"))?,
+        Ok(r) => r
+            .into_string()
+            .map_err(|e| format!("zen models read: {e}"))?,
         Err(ureq::Error::Status(code, r)) => {
             let body = r.into_string().unwrap_or_default();
             let body: String = body.chars().take(400).collect();
-            return Err(format!("zen models HTTP {code}: {}", redact_key(&body, key)));
+            return Err(format!(
+                "zen models HTTP {code}: {}",
+                redact_key(&body, key)
+            ));
         }
         Err(e) => return Err(format!("zen models: {e}")),
     };

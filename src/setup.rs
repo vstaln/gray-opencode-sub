@@ -35,7 +35,6 @@ pub fn api_key(_kind: ZenKind) -> Option<String> {
     read_cache()
 }
 
-
 fn cache_path() -> Option<PathBuf> {
     std::env::home_dir().map(|h| h.join(".opencode-sub.json"))
 }
