@@ -48,6 +48,7 @@ fn manifest() -> Value {
             provider(PROVIDER_ZEN, "OpenCode Zen", AUTH_ZEN, "Zen API key"),
             provider(PROVIDER_GO, "OpenCode Go", AUTH_GO, "Go API key"),
         ],
+        "description": "drive",
         "commands": ["/opencode"],
         "command_descriptions": {"/opencode": "switch to OpenCode Zen and Go models"},
     })
