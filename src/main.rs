@@ -206,7 +206,7 @@ fn dispatch(method: &str, params: &Value, intents: &Intents) -> Result<Value, Rp
         }})),
         "provider/auth/refresh" => auth_refresh(params),
         "provider/auth/revoke" => auth_revoke(params),
-        "provider/usage" => usage::handle(&params).map_err(unavailable),
+        "provider/usage" => usage::handle(params).map_err(unavailable),
         "provider/models" => provider_models(params),
         "provider/chat" => provider_chat(intents, params),
         "command/run" => command_run(params),
