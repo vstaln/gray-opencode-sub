@@ -4,7 +4,7 @@
 //! free models to the OpenCode client itself, and relaying them elsewhere
 //! runs against Anomaly's terms. Zen + Go API-key providers only.
 
-use acp_bridge::relay::{self, Intents, TurnFn};
+use gray_acp::relay::{self, Intents, TurnFn};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::atomic::AtomicBool;
