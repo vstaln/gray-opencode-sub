@@ -178,9 +178,11 @@ dependencies = [
 name = "gray-opencode-sub"
 version = "0.1.5"
 dependencies = [
+ "base64",
  "gray-acp",
  "serde",
  "serde_json",
+ "tempfile",
  "ureq",
  "uuid",
 ]

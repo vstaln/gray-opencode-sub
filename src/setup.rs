@@ -15,10 +15,10 @@ pub enum ZenKind {
 }
 
 impl ZenKind {
-    pub fn base_url(&self) -> &'static str {
+    pub fn native_provider(&self) -> &'static str {
         match self {
-            Self::Zen => "https://opencode.ai/zen/v1",
-            Self::Go => "https://opencode.ai/zen/go/v1",
+            Self::Zen => "opencode",
+            Self::Go => "opencode-go",
         }
     }
 }

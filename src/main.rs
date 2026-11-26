@@ -1,18 +1,12 @@
-//! opencode-sub — relays OpenAI Responses turns to OpenCode Zen/Go
-//! (opencode.ai/zen[/go]/v1) with the user's API key. No subprocess.
-//! The free-tier `opencode serve` relay was removed: it fingerprinted the
-//! free models to the OpenCode client itself, and relaying them elsewhere
-//! runs against Anomaly's terms. Zen + Go API-key providers only.
-
-use gray_acp::relay::{self, Intents, TurnFn};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+mod relay;
+mod server;
 mod setup;
+mod turn;
 mod usage;
-mod zen;
 
 use setup::ZenKind;
 
@@ -20,7 +14,18 @@ const PROVIDER_ZEN: &str = "opencode-zen";
 const PROVIDER_GO: &str = "opencode-go";
 const AUTH_ZEN: &str = "zen-api-key";
 const AUTH_GO: &str = "go-api-key";
-const TOKEN_PREFIX: &str = "opencode-sub-";
+
+#[derive(Default)]
+struct State {
+    runtime: Arc<server::Runtime>,
+    sessions: Arc<turn::Sessions>,
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        self.runtime.close();
+    }
+}
 
 fn manifest() -> Value {
     let provider = |id: &str, name: &str, auth: &str, label: &str| {
@@ -48,7 +53,7 @@ fn manifest() -> Value {
             provider(PROVIDER_ZEN, "OpenCode Zen", AUTH_ZEN, "Zen API key"),
             provider(PROVIDER_GO, "OpenCode Go", AUTH_GO, "Go API key"),
         ],
-        "description": "drive the opencode CLI as a subagent",
+        "description": "run turns through the OpenCode 2 server",
         "commands": ["/opencode"],
         "command_descriptions": {"/opencode": "switch to OpenCode Zen and Go models"},
     })
@@ -106,15 +111,16 @@ fn auth_refresh(params: &Value) -> Result<Value, RpcError> {
     }}))
 }
 
-fn auth_revoke(_params: &Value) -> Result<Value, RpcError> {
+fn auth_revoke(state: &State) -> Result<Value, RpcError> {
     // Drop only this plugin's cache; OpenCode's own files are never touched.
     if let Some(home) = std::env::home_dir() {
         let _ = std::fs::remove_file(home.join(".opencode-sub.json"));
     }
+    state.runtime.reset();
     Ok(json!({}))
 }
 
-fn provider_models(params: &Value) -> Result<Value, RpcError> {
+fn provider_models(state: &State, params: &Value) -> Result<Value, RpcError> {
     let provider = params
         .get("provider")
         .and_then(Value::as_str)
@@ -132,7 +138,13 @@ fn provider_models(params: &Value) -> Result<Value, RpcError> {
         let _ = setup::write_cache(key);
     }
     let key = setup::api_key(kind).ok_or_else(|| unavailable(setup::LOGIN_HINT))?;
-    let rows = zen::list_models(kind, &key).map_err(unavailable)?;
+    let server = state.runtime.connect(&key).map_err(unavailable)?;
+    let rows: Vec<_> = server
+        .models(kind.native_provider())
+        .map_err(unavailable)?
+        .iter()
+        .map(server::public_model)
+        .collect();
     Ok(json!({
         "provider": provider,
         "models": rows,
@@ -140,7 +152,7 @@ fn provider_models(params: &Value) -> Result<Value, RpcError> {
     }))
 }
 
-fn provider_chat(intents: &Intents, params: &Value) -> Result<Value, RpcError> {
+fn provider_chat(state: &State, params: &Value) -> Result<Value, RpcError> {
     let provider = params
         .get("provider")
         .and_then(Value::as_str)
@@ -152,12 +164,18 @@ fn provider_chat(intents: &Intents, params: &Value) -> Result<Value, RpcError> {
     let model = params
         .get("model")
         .and_then(Value::as_str)
-        .unwrap_or_default();
-    let key2 = key.clone();
-    let turn: TurnFn =
-        Arc::new(move |raw: &[u8], cancel: &AtomicBool| zen::forward(kind, &key2, raw, cancel));
+        .unwrap_or_default()
+        .to_owned();
+    let turn = turn::Turn {
+        runtime: Arc::clone(&state.runtime),
+        sessions: Arc::clone(&state.sessions),
+        provider: kind.native_provider(),
+        key,
+        model,
+    };
     let (relay_url, relay_token) =
-        relay::mint_turn(intents, model, turn, TOKEN_PREFIX).map_err(unavailable)?;
+        relay::mint(move |raw, isolated, stream| turn.run(raw, isolated, stream))
+            .map_err(unavailable)?;
     Ok(json!({"relay_url": relay_url, "relay_token": relay_token}))
 }
 
@@ -194,7 +212,7 @@ fn command_run(params: &Value) -> Result<Value, RpcError> {
     }
 }
 
-fn dispatch(method: &str, params: &Value, intents: &Intents) -> Result<Value, RpcError> {
+fn dispatch(method: &str, params: &Value, state: &State) -> Result<Value, RpcError> {
     match method {
         "plugin/manifest" => Ok(manifest()),
         "provider/auth/start" => Err(RpcError::Protocol(
@@ -205,10 +223,10 @@ fn dispatch(method: &str, params: &Value, intents: &Intents) -> Result<Value, Rp
             "retryable": false, "terminal": true,
         }})),
         "provider/auth/refresh" => auth_refresh(params),
-        "provider/auth/revoke" => auth_revoke(params),
+        "provider/auth/revoke" => auth_revoke(state),
         "provider/usage" => usage::handle(params).map_err(unavailable),
-        "provider/models" => provider_models(params),
-        "provider/chat" => provider_chat(intents, params),
+        "provider/models" => provider_models(state, params),
+        "provider/chat" => provider_chat(state, params),
         "command/run" => command_run(params),
         "plugin/tools" => Ok(json!({"tools": []})),
         "event/notify" | "plugin/shutdown" => Ok(json!({})),
@@ -231,7 +249,7 @@ fn main() {
         println!("{}", manifest());
         return;
     }
-    let intents: Intents = Default::default();
+    let state = State::default();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -251,7 +269,7 @@ fn main() {
             .unwrap_or_default()
             .to_string();
         let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
-        let result = dispatch(&method, &params, &intents);
+        let result = dispatch(&method, &params, &state);
         if !id.is_null() && !write_response(&mut out, id, result) {
             return;
         }
